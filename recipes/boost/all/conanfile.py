@@ -1047,15 +1047,16 @@ class BoostConan(ConanFile):
 
         flags.append(f"toolset={self._toolset}")
 
-        if self.settings.get_safe("compiler.cppstd"):
-            cppstd_flag = AutotoolsToolchain(self).cppstd
-            flags.append(f"cxxflags={cppstd_flag}")
-
         # LDFLAGS
         conan_link_flags = []
 
         # CXX FLAGS
         conan_cxxflags = []
+
+        if self.settings.get_safe("compiler.cppstd"):
+            cppstd_flag = AutotoolsToolchain(self).cppstd
+            conan_cxxflags.append(cppstd_flag)
+
         # fPIC DEFINITION
         if self._fPIC:
             conan_cxxflags.append("-fPIC")
@@ -1133,13 +1134,9 @@ class BoostConan(ConanFile):
         conan_cxxflags += self.conf.get("tools.build:cxxflags", default=[], check_type=list)
 
         buildenv_vars = VirtualBuildEnv(self).vars()
-        buildenv_cxxflags = buildenv_vars.get("CXXFLAGS", None)
-        if buildenv_cxxflags:
-            conan_cxxflags += buildenv_cxxflags
 
-        buildenv_ldflags = buildenv_vars.get("LDFLAGS", None)
-        if buildenv_ldflags:
-            conan_link_flags += buildenv_ldflags
+        conan_cxxflags += buildenv_vars.get("CXXFLAGS", [])
+        conan_link_flags += buildenv_vars.get("LDFLAGS", [])
 
         for link_flag in conan_link_flags:
             flags.append(f'linkflags="{link_flag}"')
