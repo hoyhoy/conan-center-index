@@ -1052,18 +1052,18 @@ class BoostConan(ConanFile):
             flags.append(f"cxxflags={cppstd_flag}")
 
         # LDFLAGS
-        link_flags = []
+        conan_link_flags = []
 
         # CXX FLAGS
-        cxx_flags = []
+        conan_cxxflags = []
         # fPIC DEFINITION
         if self._fPIC:
-            cxx_flags.append("-fPIC")
+            conan_cxxflags.append("-fPIC")
         if self.settings.build_type == "RelWithDebInfo":
             if self.settings.compiler == "gcc" or "clang" in str(self.settings.compiler):
-                cxx_flags.append("-g")
+                conan_cxxflags.append("-g")
             elif is_msvc(self):
-                cxx_flags.append("/Z7")
+                conan_cxxflags.append("/Z7")
 
         # Standalone toolchain fails when declare the std lib
         if self.settings.os not in ("Android", "Emscripten"):
@@ -1075,8 +1075,8 @@ class BoostConan(ConanFile):
                     libcxx = {
                         "libstdc++11": "libstdc++",
                     }.get(str(self.settings.compiler.libcxx), str(self.settings.compiler.libcxx))
-                    cxx_flags.append(f"-stdlib={libcxx}")
-                    link_flags.append(f"-stdlib={libcxx}")
+                    conan_cxxflags.append(f"-stdlib={libcxx}")
+                    conan_link_flags.append(f"-stdlib={libcxx}")
             except ConanException:
                 pass
 
@@ -1101,19 +1101,19 @@ class BoostConan(ConanFile):
         if is_apple_os(self):
             apple_min_version_flag = AutotoolsToolchain(self).apple_min_version_flag
             if apple_min_version_flag:
-                cxx_flags.append(apple_min_version_flag)
-                link_flags.append(apple_min_version_flag)
+                conan_cxxflags.append(apple_min_version_flag)
+                conan_link_flags.append(apple_min_version_flag)
             os_subsystem = self.settings.get_safe("os.subsystem")
             if os_subsystem == "catalyst":
-                cxx_flags.append("--target=arm64-apple-ios-macabi")
-                link_flags.append("--target=arm64-apple-ios-macabi")
+                conan_cxxflags.append("--target=arm64-apple-ios-macabi")
+                conan_link_flags.append("--target=arm64-apple-ios-macabi")
 
         if self.settings.os == "iOS":
             if self.options.multithreading:
-                cxx_flags.append("-DBOOST_SP_USE_SPINLOCK")
+                conan_cxxflags.append("-DBOOST_SP_USE_SPINLOCK")
 
             if self.conf.get("tools.apple:enable_bitcode", check_type=bool):
-                cxx_flags.append("-fembed-bitcode")
+                conan_cxxflags.append("-fembed-bitcode")
         if self._with_stacktrace_backtrace:
             flags.append(f"-sLIBBACKTRACE_PATH={self.dependencies['libbacktrace'].package_folder}")
         if self._with_iconv:
@@ -1127,16 +1127,28 @@ class BoostConan(ConanFile):
                     icu_ldflags = " ".join(f"{l}.lib" for l in icu_system_libs)
                 else:
                     icu_ldflags = " ".join(f"-l{l}" for l in icu_system_libs)
-                link_flags.append(icu_ldflags)
+                conan_link_flags.append(icu_ldflags)
 
-        link_flags = f'linkflags="{" ".join(link_flags)}"'
-        flags.append(link_flags)
+        conan_link_flags += self.conf.get("tools.build:sharedlinkflags", default=[], check_type=list)
+        conan_cxxflags += self.conf.get("tools.build:cxxflags", default=[], check_type=list)
+
+        buildenv_vars = VirtualBuildEnv(self).vars()
+        buildenv_cxxflags = buildenv_vars.get("CXXFLAGS", None)
+        if buildenv_cxxflags:
+            conan_cxxflags += buildenv_cxxflags
+
+        buildenv_ldflags = buildenv_vars.get("LDFLAGS", None)
+        if buildenv_cxxflags:
+            conan_link_flags += buildenv_ldflags
+
+        for link_flag in conan_link_flags:
+            flags.append(f'linkflags="{link_flag}"')
 
         if self.options.get_safe("addr2line_location"):
-            cxx_flags.append(f"-DBOOST_STACKTRACE_ADDR2LINE_LOCATION={self.options.addr2line_location}")
+            conan_cxxflags.append(f"-DBOOST_STACKTRACE_ADDR2LINE_LOCATION={self.options.addr2line_location}")
 
-        cxx_flags = f'cxxflags="{" ".join(cxx_flags)}"'
-        flags.append(cxx_flags)
+        for cxxflag in conan_cxxflags:
+            flags.append(f'cxxflags="{cxxflag}"')
 
         if self.options.buildid:
             flags.append(f"--buildid={self.options.buildid}")
@@ -1269,11 +1281,22 @@ class BoostConan(ConanFile):
         if self._ranlib:
             ranlib_path = self._ranlib.replace("\\", "/")
             contents += f'<ranlib>"{ranlib_path}" '
-        cxxflags = " ".join(self.conf.get("tools.build:cxxflags", default=[], check_type=list)) + " "
-        cflags = " ".join(self.conf.get("tools.build:cflags", default=[], check_type=list)) + " "
+
         buildenv_vars = VirtualBuildEnv(self).vars()
-        cppflags = buildenv_vars.get("CPPFLAGS", "") + " "
+
+        cxxflags = " ".join(self.conf.get("tools.build:cxxflags", default=[], check_type=list)) + " "
+        cxxflags += buildenv_vars.get("CXXFLAGS", "") + " "
+
+        cflags = " ".join(self.conf.get("tools.build:cflags", default=[], check_type=list)) + " "
+        cflags += buildenv_vars.get("CFLAGS", "") + " "
+
+        cppflags = " ".join(self.conf.get("tools.build:cppflags", default=[], check_type=list)) + " "
+        cppflags += buildenv_vars.get("CPPFLAGS", "") + " "
+
         ldflags = " ".join(self.conf.get("tools.build:sharedlinkflags", default=[], check_type=list)) + " "
+        ldflags += buildenv_vars.get("LDFLAGS", "") + " "
+
+        # tools.build:asflags doesn't exist....
         asflags = buildenv_vars.get("ASFLAGS", "") + " "
 
         sysroot = self.conf.get("tools.build:sysroot")
