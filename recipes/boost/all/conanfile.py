@@ -1138,7 +1138,7 @@ class BoostConan(ConanFile):
             conan_cxxflags += buildenv_cxxflags
 
         buildenv_ldflags = buildenv_vars.get("LDFLAGS", None)
-        if buildenv_cxxflags:
+        if buildenv_ldflags:
             conan_link_flags += buildenv_ldflags
 
         for link_flag in conan_link_flags:
