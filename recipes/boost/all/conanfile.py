@@ -1281,16 +1281,16 @@ class BoostConan(ConanFile):
 
         buildenv_vars = VirtualBuildEnv(self).vars()
 
-        cxxflags = " ".join(self.conf.get("tools.build:cxxflags", default=[], check_type=list)) + " "
+        cxxflags = " ".join(self.conf.get("tools.build:cxxflags", default="", check_type=list)) + " "
         cxxflags += buildenv_vars.get("CXXFLAGS", "") + " "
 
-        cflags = " ".join(self.conf.get("tools.build:cflags", default=[], check_type=list)) + " "
+        cflags = " ".join(self.conf.get("tools.build:cflags", default="", check_type=list)) + " "
         cflags += buildenv_vars.get("CFLAGS", "") + " "
 
-        cppflags = " ".join(self.conf.get("tools.build:cppflags", default=[], check_type=list)) + " "
+        cppflags = " ".join(self.conf.get("tools.build:cppflags", default="", check_type=list)) + " "
         cppflags += buildenv_vars.get("CPPFLAGS", "") + " "
 
-        ldflags = " ".join(self.conf.get("tools.build:sharedlinkflags", default=[], check_type=list)) + " "
+        ldflags = " ".join(self.conf.get("tools.build:sharedlinkflags", default="", check_type=list)) + " "
         ldflags += buildenv_vars.get("LDFLAGS", "") + " "
 
         # tools.build:asflags doesn't exist....
@@ -1326,6 +1326,7 @@ class BoostConan(ConanFile):
 
         self.output.warning(contents)
         filename = f"{folder}/user-config.jam"
+        self.output.warning(f"saving to {filename}")
         save(self, filename, contents)
 
     @property
