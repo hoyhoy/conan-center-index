@@ -32,7 +32,6 @@ class AzureSDKForCppConan(ConanFile):
     }
 
     options.update({_name: [True, False] for _name in AZURE_SDK_MODULES})
-    options.update({_name: [True, False] for _name in AZURE_SDK_MODULES})
     default_options = {"shared": False, "fPIC": True}
 
     default_options = {
