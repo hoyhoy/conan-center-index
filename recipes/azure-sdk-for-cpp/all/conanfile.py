@@ -23,10 +23,27 @@ class AzureSDKForCppConan(ConanFile):
     topics = ("azure", "cpp", "cross-platform", "microsoft", "cloud")
     package_type = "library"
     settings = "os", "arch", "compiler", "build_type"
-    options = {"shared": [True, False], "fPIC": [True, False]}
+
+    options = {
+        "shared": [True, False],
+        "fPIC": [True, False],
+        "win_http_transport" : [True, False],
+        "disable_rust": [True, False]
+    }
+
+    options.update({_name: [True, False] for _name in AZURE_SDK_MODULES})
     options.update({_name: [True, False] for _name in AZURE_SDK_MODULES})
     default_options = {"shared": False, "fPIC": True}
-    default_options.update({_name: True for _name in AZURE_SDK_MODULES}) # Build all modules by default, let users pick what they do not want
+
+    default_options = {
+        "shared": False,
+        "fPIC": True,
+        "win_http_transport": False,
+        "disable_rust": True
+    }
+
+    # used for legacy support, although this never worked even at 1.11...
+    default_options.update({_name: True for _name in AZURE_SDK_MODULES})
 
     def export_sources(self):
         copy(self, "CMakeLists.txt", src=self.recipe_folder, dst=self.export_sources_folder)
@@ -40,8 +57,14 @@ class AzureSDKForCppConan(ConanFile):
 
     def requirements(self):
         self.requires("openssl/[>=1.1 <4]")
-        self.requires("libcurl/[>=7.78 <9]")
         self.requires("libxml2/[>=2.12.5 <3]")
+
+        # always required on windows since azure-identity is always built...
+        if self.settings.os == "Windows":
+            self.requires("wil/[>=1.0.231028.1]")
+
+        if not self.options.get_safe("win_http_transport"):
+            self.requires("libcurl/[>=7.78 <9]")
 
     def layout(self):
         cmake_layout(self, src_folder="src")
@@ -49,15 +72,6 @@ class AzureSDKForCppConan(ConanFile):
     def validate(self):
         if self.settings.compiler.get_safe("cppstd"):
             check_min_cppstd(self, 14)
-
-        # Open to contributions for windows and apple
-        if self.settings.os != "Linux" and self.settings.os != "Macos":
-            raise ConanInvalidConfiguration(
-                f"{self.ref} Conan recipe in ConanCenter still does not support {self.settings.os}, contributions to the recipe welcome.")
-
-        if self.settings.compiler != "gcc" and self.settings.compiler != "clang" and self.settings.compiler != "apple-clang":
-            raise ConanInvalidConfiguration(
-                f"{self.ref} Conan recipe in ConanCenter still does not support {self.settings.compiler}, contributions to the recipe welcome.")
 
         if self.settings.compiler == 'gcc' and Version(self.settings.compiler.version) < "6":
             raise ConanInvalidConfiguration("Building requires GCC >= 6")
@@ -67,19 +81,41 @@ class AzureSDKForCppConan(ConanFile):
     def generate(self):
         tc = CMakeToolchain(self)
 
-        build_list = ["azure-core"]
+        # build list only controls what's emitted by by package_info
+        # all the libraries are built by azure-sdk-for-cpp
+
+        # azure-identity is always built there is no way to disable it
+        # as it's required by azure-core now...
+
+        build_list = ["azure-core", "azure-identity"]
+
         for sdk in AZURE_SDK_MODULES:
             if self.options.get_safe(sdk):
                 build_list.append(sdk)
-        tc.cache_variables["BUILD_LIST"] = ";".join(build_list)
 
-        tc.variables["AZ_ALL_LIBRARIES"] = "ON"
-        tc.variables["FETCH_SOURCE_DEPS"] = "OFF"
-        tc.cache_variables["BUILD_TESTING"] = "OFF"
+        tc.cache_variables["BUILD_LIST"] = ";".join(build_list) # has no effect on the azure-sdk-for-cpp build
+
+        tc.cache_variables["BUILD_TESTING"] = not self.conf.get("tools.build:skip_test", default=True, check_type=bool)
+        tc.cache_variables["ENABLE_PROXY_TESTS"] = not self.conf.get("tools.build:skip_test", default=True, check_type=bool)
+
         tc.cache_variables["BUILD_WINDOWS_UWP"] = "ON"
-        tc.cache_variables["DISABLE_AZURE_CORE_OPENTELEMETRY"] = "ON"
-        tc.cache_variables["BUILD_TRANSPORT_CURL"] = "ON"
+        tc.cache_variables["BUILD_DOCUMENTATION"] = "OFF"
+        tc.cache_variables["BUILD_SAMPLES"] = "OFF"
+        tc.cache_variables["BUILD_PERFORMANCE_TESTS"] = "OFF"
+
+        tc.cache_variables["BUILD_TRANSPORT_CURL"] = not self.options.get_safe("win_http_transport")
+        tc.cache_variables["BUILD_TRANSPORT_WINHTTP"] = self.options.get_safe("win_http_transport")
+
+        tc.cache_variables["AZ_ALL_LIBRARIES"] = "OFF"
+        tc.cache_variables["FETCH_SOURCE_DEPS"] = "OFF"
+
         tc.cache_variables["WARNINGS_AS_ERRORS"] = "OFF"
+
+        tc.cache_variables["DISABLE_AZURE_CORE_OPENTELEMETRY"] = "ON"
+        tc.cache_variables["DISABLE_AMQP"] = "ON"
+
+        tc.cache_variables["DISABLE_RUST_IN_BUILD"] = self.options.get_safe("win_http_transport")
+
         tc.generate()
 
         deps = CMakeDeps(self)
@@ -105,9 +141,35 @@ class AzureSDKForCppConan(ConanFile):
         # core component
         self.cpp_info.components["azure-core"].set_property("cmake_target_name", "Azure::azure-core")
         self.cpp_info.components["azure-core"].libs = ["azure-core"]
-        self.cpp_info.components["azure-core"].requires.extend(["openssl::openssl", "libcurl::curl", "libxml2::libxml2"])
 
-        enabled_sdks = [sdk for sdk in AZURE_SDK_MODULES if self.options.get_safe(sdk)]
-        for sdk in enabled_sdks:
-            self.cpp_info.components[sdk].set_property("cmake_target_name", f"Azure::{sdk}")
-            self.cpp_info.components[sdk].libs = [sdk]
+        self.cpp_info.components["azure-core"].requires.extend(["openssl::openssl", "libxml2::libxml2"])
+
+        if not self.options.get_safe("win_http_transport"):
+             self.cpp_info.components["azure-core"].requires.append("libcurl::libcurl")
+         else:
+             self.cpp_info.components["azure-core"].requires.append("wil::wil")
+
+        if self.options.get_safe("azure-storage-common"):
+            self.cpp_info.components["azure-storage-common"].set_property("cmake_target_name", "Azure::azure-storage-common")
+            self.cpp_info.components["azure-storage-common"].libs = ["azure-storage-common"]
+            self.cpp_info.components["azure-storage-common"].requires = ["azure-core"]
+
+        if self.options.get_safe("azure-storage-blobs"):
+            self.cpp_info.components["azure-storage-blobs"].set_property("cmake_target_name", "Azure::azure-storage-blobs")
+            self.cpp_info.components["azure-storage-blobs"].libs = ["azure-storage-blobs"]
+            self.cpp_info.components["azure-storage-blobs"].requires = ["azure-core", "azure-storage-common"]
+            if not self.conf.get("tools.build:skip_test", default=True, check_type=bool):
+                self.cpp_info.components["azure-storage-blobs"].requires.append("azure-identity")
+
+        if self.options.get_safe("azure-storage-files-shares"):
+            self.cpp_info.components["azure-storage-files-shares"].set_property("cmake_target_name", "Azure::azure-storage-files-shares")
+            self.cpp_info.components["azure-storage-files-shares"].libs = ["azure-storage-files-shares"]
+            self.cpp_info.components["azure-storage-files-shares"].requires = ["azure-core", "azure-storage-common"]
+
+        if self.options.get_safe("azure-identity"):
+            self.cpp_info.components["azure-identity"].set_property("cmake_target_name", "Azure::azure-identity")
+            self.cpp_info.components["azure-identity"].libs = ["azure-identity"]
+            self.cpp_info.components["azure-identity"].requires = ["azure-core"]
+
+            if self.settings.os == "Windows":
+                self.cpp_info.components["azure-identity"].requires.append("wil::wil")
