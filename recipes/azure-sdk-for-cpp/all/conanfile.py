@@ -11,7 +11,8 @@ required_conan_version = ">=1.54.0"
 AZURE_SDK_MODULES = (
     "azure-storage-common",
     "azure-storage-blobs",
-    "azure-storage-files-shares"
+    "azure-storage-files-shares",
+    "azure-identity"
 )
 
 class AzureSDKForCppConan(ConanFile):
@@ -86,7 +87,7 @@ class AzureSDKForCppConan(ConanFile):
         # build list only controls what's emitted by by package_info
         # all the libraries are built by azure-sdk-for-cpp's cmake
 
-        build_list = [ "azure-core", "azure-identity" ]
+        build_list = [ "azure-core" ]
 
         for sdk in build_list:
             if self.options.get_safe(sdk):
