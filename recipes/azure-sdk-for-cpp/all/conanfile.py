@@ -114,7 +114,7 @@ class AzureSDKForCppConan(ConanFile):
         tc.cache_variables["DISABLE_AZURE_CORE_OPENTELEMETRY"] = "ON"
         tc.cache_variables["DISABLE_AMQP"] = "ON"
 
-        tc.cache_variables["DISABLE_RUST_IN_BUILD"] = self.options.get_safe("win_http_transport")
+        tc.cache_variables["DISABLE_RUST_IN_BUILD"] = self.options.get_safe("disable_rust")
 
         tc.generate()
 
