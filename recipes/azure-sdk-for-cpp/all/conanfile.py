@@ -144,9 +144,9 @@ class AzureSDKForCppConan(ConanFile):
         self.cpp_info.components["azure-core"].requires.extend(["openssl::openssl", "libxml2::libxml2"])
 
         if not self.options.get_safe("win_http_transport"):
-             self.cpp_info.components["azure-core"].requires.append("libcurl::libcurl")
-         else:
-             self.cpp_info.components["azure-core"].requires.append("wil::wil")
+            self.cpp_info.components["azure-core"].requires.append("libcurl::libcurl")
+        else:
+            self.cpp_info.components["azure-core"].requires.append("wil::wil")
 
         if self.options.get_safe("azure-storage-common"):
             self.cpp_info.components["azure-storage-common"].set_property("cmake_target_name", "Azure::azure-storage-common")
