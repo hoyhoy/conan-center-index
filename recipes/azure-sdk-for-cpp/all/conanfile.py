@@ -41,7 +41,8 @@ class AzureSDKForCppConan(ConanFile):
         "disable_rust": True
     }
 
-    # used for legacy support, although this never worked even at 1.11...
+    # used for legacy support, although this never worked even at 1.11.
+    # as all libraries were built by cmake
     default_options.update({_name: True for _name in AZURE_SDK_MODULES})
 
     def export_sources(self):
@@ -58,7 +59,9 @@ class AzureSDKForCppConan(ConanFile):
         self.requires("openssl/[>=1.1 <4]")
         self.requires("libxml2/[>=2.12.5 <3]")
 
-        # always required on windows since azure-identity is always built...
+        # always required on windows since the azure-identity build can't be disabled.
+        # in theory, not needed if skip_test=True and you didn't need azure-identity
+
         if self.settings.os == "Windows":
             self.requires("wil/[>=1.0.231028.1]")
 
@@ -81,12 +84,9 @@ class AzureSDKForCppConan(ConanFile):
         tc = CMakeToolchain(self)
 
         # build list only controls what's emitted by by package_info
-        # all the libraries are built by azure-sdk-for-cpp
+        # all the libraries are built by azure-sdk-for-cpp's cmake
 
-        # azure-identity is always built there is no way to disable it
-        # as it's required by azure-core now...
-
-        build_list = ["azure-core", "azure-identity"]
+        build_list = [ "azure-core", "azure-identity" ]
 
         for sdk in AZURE_SDK_MODULES:
             if self.options.get_safe(sdk):
