@@ -88,7 +88,7 @@ class AzureSDKForCppConan(ConanFile):
 
         build_list = [ "azure-core", "azure-identity" ]
 
-        for sdk in AZURE_SDK_MODULES:
+        for sdk in build_list:
             if self.options.get_safe(sdk):
                 build_list.append(sdk)
 
