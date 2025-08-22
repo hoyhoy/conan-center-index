@@ -50,10 +50,10 @@ class AzureSDKForCppConan(ConanFile):
         self.requires("openssl/[>=1.1 <4]")
         self.requires("libxml2/[>=2.12.5 <3]")
 
-        # always required on windows since the azure-identity build can't be disabled.
-        # in theory, not needed if skip_test=True and you didn't need azure-identity
-
         if self.settings.os == "Windows":
+            # wil is always required on windows since azure-identity can't be disabled via cmake.
+            # azure-identity and wil are not necessary for storage if skip_test=True, but MS
+            # doesn't currently support that build option...
             self.requires("wil/[>=1.0.231028.1]")
 
         if not self.options.get_safe("win_http_transport"):
@@ -80,13 +80,16 @@ class AzureSDKForCppConan(ConanFile):
 
         if self.settings.os == "Windows":
             tc.cache_variables["BUILD_WINDOWS_UWP"] = self.options.get_safe("windows_uwp")
+            tc.cache_variables["BUILD_TRANSPORT_CURL"] = not self.options.get_safe("win_http_transport")
+            tc.cache_variables["BUILD_TRANSPORT_WINHTTP"] = self.options.get_safe("win_http_transport")
+        else:
+            tc.cache_variables["BUILD_WINDOWS_UWP"] = "OFF"
+            tc.cache_variables["BUILD_TRANSPORT_CURL"] = "ON"
+            tc.cache_variables["BUILD_TRANSPORT_WINHTTP"] = "OFF"
 
         tc.cache_variables["BUILD_DOCUMENTATION"] = "OFF"
         tc.cache_variables["BUILD_SAMPLES"] = "OFF"
         tc.cache_variables["BUILD_PERFORMANCE_TESTS"] = "OFF"
-
-        tc.cache_variables["BUILD_TRANSPORT_CURL"] = not self.options.get_safe("win_http_transport")
-        tc.cache_variables["BUILD_TRANSPORT_WINHTTP"] = self.options.get_safe("win_http_transport")
 
         tc.cache_variables["AZ_ALL_LIBRARIES"] = "OFF"
         tc.cache_variables["FETCH_SOURCE_DEPS"] = "OFF"
