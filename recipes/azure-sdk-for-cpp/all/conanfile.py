@@ -8,13 +8,6 @@ import os
 
 required_conan_version = ">=1.54.0"
 
-AZURE_SDK_MODULES = (
-    "azure-storage-common",
-    "azure-storage-blobs",
-    "azure-storage-files-shares",
-    "azure-identity"
-)
-
 class AzureSDKForCppConan(ConanFile):
     name = "azure-sdk-for-cpp"
     description = "Microsoft Azure Storage Client Library for C++"
@@ -29,22 +22,19 @@ class AzureSDKForCppConan(ConanFile):
         "shared": [True, False],
         "fPIC": [True, False],
         "win_http_transport" : [True, False],
-        "disable_rust": [True, False]
+        "disable_rust": [True, False],
+        "windows_uwp" : [True, False]
     }
 
-    options.update({_name: [True, False] for _name in AZURE_SDK_MODULES})
     default_options = {"shared": False, "fPIC": True}
 
     default_options = {
         "shared": False,
         "fPIC": True,
         "win_http_transport": False,
-        "disable_rust": True
+        "disable_rust": True,
+        "windows_uwp": True
     }
-
-    # used for legacy support, although this never worked even at 1.11.
-    # as all libraries were built by cmake
-    default_options.update({_name: True for _name in AZURE_SDK_MODULES})
 
     def export_sources(self):
         copy(self, "CMakeLists.txt", src=self.recipe_folder, dst=self.export_sources_folder)
@@ -78,27 +68,19 @@ class AzureSDKForCppConan(ConanFile):
 
         if self.settings.compiler == 'gcc' and Version(self.settings.compiler.version) < "6":
             raise ConanInvalidConfiguration("Building requires GCC >= 6")
+
         if (self.settings.compiler == 'clang' or self.settings.compiler == "apple-clang") and Version(self.settings.compiler.version) < "10":
             raise ConanInvalidConfiguration("Building requires Clang >= 10")
 
     def generate(self):
         tc = CMakeToolchain(self)
 
-        # build list only controls what's emitted by by package_info
-        # all the libraries are built by azure-sdk-for-cpp's cmake
-
-        build_list = [ "azure-core" ]
-
-        for sdk in build_list:
-            if self.options.get_safe(sdk):
-                build_list.append(sdk)
-
-        tc.cache_variables["BUILD_LIST"] = ";".join(build_list) # has no effect on the azure-sdk-for-cpp build
-
         tc.cache_variables["BUILD_TESTING"] = not self.conf.get("tools.build:skip_test", default=True, check_type=bool)
         tc.cache_variables["ENABLE_PROXY_TESTS"] = not self.conf.get("tools.build:skip_test", default=True, check_type=bool)
 
-        tc.cache_variables["BUILD_WINDOWS_UWP"] = "ON"
+        if self.settings.os == "Windows":
+            tc.cache_variables["BUILD_WINDOWS_UWP"] = self.options.get_safe("windows_uwp")
+
         tc.cache_variables["BUILD_DOCUMENTATION"] = "OFF"
         tc.cache_variables["BUILD_SAMPLES"] = "OFF"
         tc.cache_variables["BUILD_PERFORMANCE_TESTS"] = "OFF"
@@ -130,6 +112,7 @@ class AzureSDKForCppConan(ConanFile):
         copy(self, "LICENSE.txt",
              dst=os.path.join(self.package_folder, "licenses"),
              src=self.source_folder)
+
         cmake = CMake(self)
         cmake.install()
 
@@ -144,32 +127,29 @@ class AzureSDKForCppConan(ConanFile):
 
         self.cpp_info.components["azure-core"].requires.extend(["openssl::openssl", "libxml2::libxml2"])
 
-        if not self.options.get_safe("win_http_transport"):
-            self.cpp_info.components["azure-core"].requires.append("libcurl::libcurl")
-        else:
+        if self.settings.os == "Windows" and self.options.get_safe("win_http_transport"):
             self.cpp_info.components["azure-core"].requires.append("wil::wil")
+        else:
+            self.cpp_info.components["azure-core"].requires.append("libcurl::libcurl")
 
-        if self.options.get_safe("azure-storage-common"):
-            self.cpp_info.components["azure-storage-common"].set_property("cmake_target_name", "Azure::azure-storage-common")
-            self.cpp_info.components["azure-storage-common"].libs = ["azure-storage-common"]
-            self.cpp_info.components["azure-storage-common"].requires = ["azure-core"]
+        self.cpp_info.components["azure-storage-common"].set_property("cmake_target_name", "Azure::azure-storage-common")
+        self.cpp_info.components["azure-storage-common"].libs = ["azure-storage-common"]
+        self.cpp_info.components["azure-storage-common"].requires = ["azure-core"]
 
-        if self.options.get_safe("azure-storage-blobs"):
-            self.cpp_info.components["azure-storage-blobs"].set_property("cmake_target_name", "Azure::azure-storage-blobs")
-            self.cpp_info.components["azure-storage-blobs"].libs = ["azure-storage-blobs"]
-            self.cpp_info.components["azure-storage-blobs"].requires = ["azure-core", "azure-storage-common"]
-            if not self.conf.get("tools.build:skip_test", default=True, check_type=bool):
-                self.cpp_info.components["azure-storage-blobs"].requires.append("azure-identity")
+        self.cpp_info.components["azure-storage-blobs"].set_property("cmake_target_name", "Azure::azure-storage-blobs")
+        self.cpp_info.components["azure-storage-blobs"].libs = ["azure-storage-blobs"]
+        self.cpp_info.components["azure-storage-blobs"].requires = ["azure-core", "azure-storage-common"]
 
-        if self.options.get_safe("azure-storage-files-shares"):
-            self.cpp_info.components["azure-storage-files-shares"].set_property("cmake_target_name", "Azure::azure-storage-files-shares")
-            self.cpp_info.components["azure-storage-files-shares"].libs = ["azure-storage-files-shares"]
-            self.cpp_info.components["azure-storage-files-shares"].requires = ["azure-core", "azure-storage-common"]
+        if not self.conf.get("tools.build:skip_test", default=True, check_type=bool):
+            self.cpp_info.components["azure-storage-blobs"].requires.append("azure-identity")
 
-        if self.options.get_safe("azure-identity"):
-            self.cpp_info.components["azure-identity"].set_property("cmake_target_name", "Azure::azure-identity")
-            self.cpp_info.components["azure-identity"].libs = ["azure-identity"]
-            self.cpp_info.components["azure-identity"].requires = ["azure-core"]
+        self.cpp_info.components["azure-storage-files-shares"].set_property("cmake_target_name", "Azure::azure-storage-files-shares")
+        self.cpp_info.components["azure-storage-files-shares"].libs = ["azure-storage-files-shares"]
+        self.cpp_info.components["azure-storage-files-shares"].requires = ["azure-core", "azure-storage-common"]
 
-            if self.settings.os == "Windows":
-                self.cpp_info.components["azure-identity"].requires.append("wil::wil")
+        self.cpp_info.components["azure-identity"].set_property("cmake_target_name", "Azure::azure-identity")
+        self.cpp_info.components["azure-identity"].libs = ["azure-identity"]
+        self.cpp_info.components["azure-identity"].requires = ["azure-core"]
+
+        if self.settings.os == "Windows":
+            self.cpp_info.components["azure-identity"].requires.append("wil::wil")
